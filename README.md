@@ -1,7 +1,7 @@
-# STIG ID: WN10-AC-000035 - Passwords must, at a minimum, be 14 characters.
+# STIG ID: WN10-SO-000030 - Audit policy using subcategories must be enabled.
 
 ## Synopsis
-This PowerShell script ensures that the The Passwords must, at a minimum, be 14 characters.
+This PowerShell script ensures that the Audit policy using subcategories is enabled.
 
 ## Notes
 - **Author**: Richard Hood
@@ -25,94 +25,61 @@ Put any usage instructions here.
 
 Example syntax:
 ```powershell
-# STIG ID: WN10-AC-000035
-# Title: Passwords must, at a minimum, be 14 characters.
-
-# PowerShell script to set the minimum password length to 14 characters (STIG WN10-AC-000035)
-
-# PowerShell script to set the minimum password length to 14 characters (STIG WN10-AC-000035)
-
-# Requires administrative privileges
+ # Requires administrative privileges
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "This script requires administrative privileges. Please run PowerShell as an Administrator."
     exit 1
 }
 
-# Define paths for temporary files
-$exportFile = "$env:TEMP\secpol.cfg"
-$updatedFile = "$env:TEMP\secpol_updated.cfg"
-$logFile = "$env:TEMP\secpol_log.txt"
+# Define registry path and value
+$registryPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+$valueName = "SCENoApplyLegacyAuditPolicy"
+$requiredValue = 1
 
-# Export the current security policy to a temporary file
-Write-Host "Exporting current security policy to $exportFile..."
-$exportResult = secedit /export /cfg $exportFile /log $logFile 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to export security policy. Exit code: $LASTEXITCODE"
-    Write-Host "Export error details:"
-    Get-Content $logFile -ErrorAction SilentlyContinue
-    exit 1
+# Check if the registry key exists, create it if it doesn't
+if (-not (Test-Path $registryPath)) {
+    Write-Host "Registry path $registryPath does not exist. Creating it..."
+    New-Item -Path $registryPath -Force | Out-Null
 }
 
-# Check if the export file exists
-if (-not (Test-Path $exportFile)) {
-    Write-Host "Export file not found at $exportFile. Ensure you have the necessary permissions."
-    exit 1
+# Check the current value of SCENoApplyLegacyAuditPolicy
+Write-Host "Checking current value of $valueName..."
+$currentValue = $null
+try {
+    $currentValue = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction Stop | Select-Object -ExpandProperty $valueName
+    Write-Host "Current value of $valueName is: $currentValue"
+} catch {
+    Write-Host "The registry value $valueName does not exist. It will be created."
 }
 
-# Read the exported security policy file
-Write-Host "Modifying security policy..."
-$secpolContent = Get-Content $exportFile
-
-# Debug: Display the current MinimumPasswordLength value
-$currentLength = $secpolContent | Select-String "MinimumPasswordLength"
-Write-Host "Current MinimumPasswordLength: $currentLength"
-
-# Update the MinimumPasswordLength value to 14
-$newContent = $secpolContent -replace "MinimumPasswordLength = \d+", "MinimumPasswordLength = 14"
-
-# Save the updated configuration to a new file
-$newContent | Set-Content $updatedFile
-
-# Debug: Verify the updated file content
-$updatedLength = (Get-Content $updatedFile | Select-String "MinimumPasswordLength").ToString()
-Write-Host "Updated MinimumPasswordLength in file: $updatedLength"
-
-# Import the updated security policy
-Write-Host "Applying updated security policy..."
-$importResult = secedit /configure /db $env:windir\security\database\secedit.sdb /cfg $updatedFile /log $logFile /quiet 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to apply the updated security policy. Exit code: $LASTEXITCODE"
-    Write-Host "Import error details:"
-    Get-Content $logFile -ErrorAction SilentlyContinue
-
-    # Fallback: Try using 'net accounts' to set the minimum password length
-    Write-Host "Attempting fallback method using 'net accounts'..."
+# Set the registry value to 1 if it doesn't already match
+if ($currentValue -ne $requiredValue) {
+    Write-Host "Setting $valueName to $requiredValue..."
     try {
-        net accounts /minpwlen:14
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Successfully set the minimum password length to 14 using 'net accounts'."
-        } else {
-            Write-Host "Fallback method failed. Exit code: $LASTEXITCODE"
-            exit 1
-        }
+        Set-ItemProperty -Path $registryPath -Name $valueName -Value $requiredValue -Type DWord -Force -ErrorAction Stop
+        Write-Host "Successfully set $valueName to $requiredValue."
     } catch {
-        Write-Host "Error using 'net accounts': $_"
+        Write-Host "Failed to set the registry value. Error: $_"
         exit 1
     }
 } else {
-    Write-Host "Successfully applied the updated security policy using 'secedit'."
+    Write-Host "The value of $valueName is already set to $requiredValue. No changes needed."
 }
-
-# Clean up temporary files
-Write-Host "Cleaning up temporary files..."
-Remove-Item $exportFile -ErrorAction SilentlyContinue
-Remove-Item $updatedFile -ErrorAction SilentlyContinue
-Remove-Item $logFile -ErrorAction SilentlyContinue
 
 # Verify the change
 Write-Host "Verifying the change..."
-$check = (net accounts | Select-String "Minimum password length").ToString()
-Write-Host $check
+try {
+    $verifiedValue = Get-ItemProperty -Path $registryPath -Name $valueName -ErrorAction Stop | Select-Object -ExpandProperty $valueName
+    if ($verifiedValue -eq $requiredValue) {
+        Write-Host "Verification successful: $valueName is set to $verifiedValue."
+    } else {
+        Write-Host "Verification failed: $valueName is set to $verifiedValue, expected $requiredValue."
+        exit 1
+    }
+} catch {
+    Write-Host "Failed to verify the registry value. Error: $_"
+    exit 1
+}
 
-# Inform the user to log off or reboot for the change to take effect
-Write-Host "A logoff or reboot may be required for the change to take effect." 
+# Inform the user to reboot for the change to take effect
+Write-Host "Audit policy subcategory settings have been enabled. A reboot is required for the change to take effect." 
