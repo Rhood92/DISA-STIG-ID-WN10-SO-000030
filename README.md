@@ -12,8 +12,8 @@ This PowerShell script ensures that the Audit policy using subcategories is enab
 - **Version**: 1.0
 - **CVEs**: N/A
 - **Plugin IDs**: N/A
-- **STIG-ID**: WN10-AC-000035
-  
+- **STIG-ID**: WN10-SO-000030
+-   
 ## Tested On
 - **Date(s) Tested**: 
 - **Tested By**: 
